@@ -1,0 +1,86 @@
+name: Build ERPNext + CRM image
+
+# 构建同时包含 erpnext 和 crm 的镜像并推到 GHCR，这样部署机器上就不必自己编译。
+# 推到 GHCR 后，把 docker/.env 里的 IMAGE 改成 ghcr.io/<owner>/<repo>:latest 即可直接 make up。
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docker/apps.json"
+      - ".github/workflows/build-image.yml"
+  # 上游分支会持续有新提交，每周重建一次拿到最新的 erpnext / crm。
+  schedule:
+    - cron: "0 3 * * 1"
+  workflow_dispatch:
+    inputs:
+      frappe_branch:
+        description: "Frappe 框架分支"
+        default: version-16
+
+env:
+  REGISTRY: ghcr.io
+  FRAPPE_DOCKER_REF: main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # frappe_docker 提供 Containerfile 和 resources/ 下的入口脚本，作为构建上下文。
+      - name: Checkout frappe_docker build context
+        uses: actions/checkout@v4
+        with:
+          repository: frappe/frappe_docker
+          ref: ${{ env.FRAPPE_DOCKER_REF }}
+          path: .cache/frappe_docker
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository }}
+          tags: |
+            type=raw,value=latest
+            type=raw,value={{date 'YYYYMMDD'}}
+            type=sha,format=short
+
+      # apps.json 以 build secret 挂入，Docker 不会因其内容变化而失效缓存，
+      # 因此用它的哈希做 CACHE_BUST。定时构建时追加日期以强制拉取上游最新提交。
+      - name: Compute cache bust
+        id: bust
+        run: |
+          bust="$(sha256sum docker/apps.json | cut -d' ' -f1)"
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            bust="$bust-$(date +%Y%m%d)"
+          fi
+          echo "value=$bust" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .cache/frappe_docker
+          file: .cache/frappe_docker/images/layered/Containerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          secret-files: |
+            apps_json=${{ github.workspace }}/docker/apps.json
+          build-args: |
+            FRAPPE_BRANCH=${{ inputs.frappe_branch || 'version-16' }}
+            CACHE_BUST=${{ steps.bust.outputs.value }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

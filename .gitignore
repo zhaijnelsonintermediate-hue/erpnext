@@ -1,0 +1,11 @@
+# 本地配置（含密码），只提交 docker/.env.example
+docker/.env
+
+# 构建上下文缓存：按需从 frappe/frappe_docker 拉取，不进版本库
+.cache/
+
+# 备份产物
+*.sql.gz
+backups/
+
+.DS_Store
