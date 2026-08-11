@@ -88,15 +88,40 @@ make bench CMD="--site erp.localhost migrate"
 
 ## 本地开发
 
-需要改 CRM 或 ERPNext 源码时，Docker 方案不合适（应用固化在镜像里），改用裸机 bench：
+需要改 CRM 或 ERPNext 源码时，Docker 方案不合适（应用固化在镜像里），改用裸机 bench。
+
+**前置版本要求比多数教程写的高**，装之前先对一遍，否则会在 `bench init` 中途失败：
+
+| 依赖 | 要求 | 说明 |
+| --- | --- | --- |
+| Python | **>=3.14,<3.15** | frappe v16 的 `requires-python`。3.13 会在装 frappe 时报 `SyntaxError` |
+| Node | **>=24** | frappe v16 的 `engines`。低版本 yarn 直接拒绝安装 |
+| MariaDB | >=10.6 | 需要 `utf8mb4` / `utf8mb4_unicode_ci` |
+| Redis | 任意近期版本 | bench 自管两个实例（11000 / 13000） |
+| `uv` | 必需 | bench 5.31+ 用它建 venv |
+| `cron` | 必需 | `bench init` 会调 `crontab`，缺了会在最后一步失败 |
+
+系统没有 Python 3.14 时，用 uv 装一个最省事：
+
+```bash
+uv python install 3.14
+```
+
+然后：
 
 ```bash
 pip install frappe-bench
-bench init --frappe-branch version-16 frappe-bench
+bench init --frappe-branch version-16 \
+  --python "$(uv python find 3.14)" frappe-bench
 cd frappe-bench
-/path/to/scripts/bench-setup.sh erp.localhost
+DB_ROOT_PASSWORD=<你的 MariaDB root 密码> \
+  /path/to/scripts/bench-setup.sh erp.localhost
 bench start
 ```
+
+ERPNext 首次打开 `/app` 会进入初始设置向导（语言 / 时区 / 货币 / 公司），走完才能用；Frappe CRM 的 `/crm` 不依赖这个向导，装完即可用。
+
+> `bench new-site` 一旦中途失败（比如网络或证书问题），会留下一个**半初始化的站点目录** —— 货币等基础数据没导入，但目录已存在。此时 `bench-setup.sh` 的「站点已存在」判断会跳过重建，接着装 ERPNext 就会报 `Could not find Default Currency: INR`。遇到这个报错，先 `bench drop-site <站点> --db-root-password <密码> --force` 再重跑。
 
 ## 版本
 
