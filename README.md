@@ -26,6 +26,31 @@ make logs     # 跟踪建站进度
 
 `make help` 可以看到全部命令。
 
+## Windows
+
+`make` 和 `.sh` 脚本在 PowerShell 里用不了，有两条路。
+
+**A. 直接用 PowerShell**（需要 Docker Desktop 已启动）：
+
+```powershell
+Copy-Item docker\.env.example docker\.env    # 改掉里面的密码
+.\docker\build-image.ps1                     # 等价于 make build
+
+docker compose --env-file docker\.env -f docker\compose.yaml up -d
+docker compose --env-file docker\.env -f docker\compose.yaml logs -f
+```
+
+对应 `make down` / `make clean` 的是：
+
+```powershell
+docker compose --env-file docker\.env -f docker\compose.yaml down
+docker compose --env-file docker\.env -f docker\compose.yaml down -v   # 连数据卷一起删
+```
+
+注意 PowerShell 的续行符是反引号 `` ` ``，不是 bash 的 `\`；把命令写成一行最省事。
+
+**B. 用 WSL2**（推荐）：在 WSL 里 clone 并执行，`make` 那套原样可用，性能也比 Windows 文件系统上好。Docker Desktop 开启 WSL 集成后，容器与 Windows 共用同一个引擎。
+
 ## 为什么要自己构建镜像
 
 Frappe 的一个 bench 里装了哪些应用，是在**镜像构建期**就固定下来的 —— 容器起来之后再 `bench get-app` 不会保留到下次重建。而官方发布的 `frappe/erpnext` 镜像里只有 `frappe` 和 `erpnext`，没有 `crm`。
@@ -54,6 +79,7 @@ docker/
   apps.json          # 镜像里要装的应用清单（erpnext + crm）
   compose.yaml       # 完整服务栈
   build-image.sh     # 构建自定义镜像
+  build-image.ps1    # 同上，Windows PowerShell 版
   .env.example       # 配置模板，复制为 .env
 scripts/
   bench-setup.sh     # 裸机 bench 安装（本地二次开发用）
